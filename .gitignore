@@ -1,0 +1,6 @@
+data_old
+data.2021
+data/vector/*.csv
+data/pdf/
+data/abst/
+.DS_Store
