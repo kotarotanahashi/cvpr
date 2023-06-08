@@ -80,7 +80,8 @@ def create_summary(placeholder, title, abst):
     """.format(title=title, abst=abst)
 
     response = openai.ChatCompletion.create(
-        model="gpt-3.5-turbo",
+        #model="gpt-3.5-turbo",
+        model="gpt-4",
         messages=[
             {"role": "user", "content": prompt}
         ],
@@ -131,11 +132,15 @@ def main():
 
     query_tags = st.multiselect("タグの選択(複数選択可)", options=tag_vector.keys(), on_change=clear_session)
     
+    query_text = st.text_input("検索キーワード(日本語 or 英語)", value="", on_change=clear_session, disabled=len(st.session_state.token) == 0)
+
+    """
     if len(st.session_state.token) > 0:
-        query_text = st.text_input("検索キーワード(日本語 or 英語)", value="", on_change=clear_session)
+        query_text = st.text_input("検索キーワード(日本語 or 英語)", value="", on_change=clear_session, disabled=len(st.session_state.token) == 0)
     else:
         query_text = ""
-
+    """
+    
     target_options = ['タイトルから検索', 'タイトルとアブストラクトから検索', 'アブストラクトから検索']
     target = st.radio("検索条件", target_options, on_change=clear_session)
     ratio = target_options.index(target) / 2.0
