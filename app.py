@@ -4,6 +4,8 @@ import pickle
 import numpy as np
 import openai
 from retrying import retry
+from PIL import Image
+import urllib
 
 
 # Retry parameters
@@ -80,8 +82,8 @@ def create_summary(placeholder, title, abst):
     """.format(title=title, abst=abst)
 
     response = openai.ChatCompletion.create(
-        #model="gpt-3.5-turbo",
-        model="gpt-4",
+        model="gpt-3.5-turbo",
+        #model="gpt-4",
         messages=[
             {"role": "user", "content": prompt}
         ],
@@ -98,24 +100,36 @@ def create_summary(placeholder, title, abst):
     return gen_text
 
 
+
+
+
+
+
 def main():
 
-    st.title('Chat GPT Search, CVPR 2023')
-    st.caption("[何ができる？] 検索キーワードをOpenAI APIを使ってベクトル化し、約2400のCVPR 2023の論文から関連する論文を検索することができます。また、論文の内容をChatGPTに要約してもらうことができます。")
+ 
+    image = Image.open('top.png')
 
-    st.sidebar.title('Settings')
+    st.image(image, caption='CVPR, June 18-23, 2023, Vancouver, Canada, [image-ref: wikipedia.org]', use_column_width=True)
 
-    if "token" not in st.session_state:
-        st.session_state.token = ""
+    st.title('CVPR 2023, 文書埋め込みを用いた論文検索')
+    st.caption("検索キーワードをOpenAI APIを使ってベクトル化し、約2400のCVPR 2023の論文から関連する論文を検索することができます。また、論文の内容をChatGPTに要約してもらうことができます。")
 
-    token = st.sidebar.text_input('研究内容をChatGPTに聞く機能やフリーテキストによる検索を有効化するには、OpenAIのAPIキーを入力してください (APIキーを登録しなくてもタグによる検索機能は利用できます。)', type='password', value=st.session_state.token)
+    #st.sidebar.title('Settings')
 
-    if st.sidebar.button('APIキーの登録'):
-        openai.api_key = token
-        st.session_state.token = token
+    openai.api_key = st.session_state.token = st.secrets["OPENAI_API_KEY"]
+
+    #if "token" not in st.session_state:
+    #    st.session_state.token = ""
+
+    #token = st.sidebar.text_input('研究内容をChatGPTに聞く機能やフリーテキストによる検索を有効化するには、OpenAIのAPIキーを入力してください (APIキーを登録しなくてもタグによる検索機能は利用できます。)', type='password', value=st.session_state.token)
+
+    #if st.sidebar.button('APIキーの登録'):
+    #    openai.api_key = token
+    #    st.session_state.token = token
     
-    if len(st.session_state.token) > 0:
-        st.sidebar.write(f'トークンが設定されました')
+    #if len(st.session_state.token) > 0:
+    #    st.sidebar.write(f'トークンが設定されました')
 
     if "search_clicked" not in st.session_state:
         st.session_state.search_clicked = False
@@ -130,17 +144,16 @@ def main():
 
     tag_vector = load_tag_vector()
 
-    query_tags = st.multiselect("タグの選択(複数選択可)", options=tag_vector.keys(), on_change=clear_session)
+    api_available = len(st.session_state.token) > 0
+    exp_text = "APIを入れると入力可能になります" if not api_available else ""
+    query_text = st.text_input(
+        "検索キーワード(日本語 or 英語) " + exp_text, value="",
+        on_change=clear_session,
+        disabled=not api_available)
     
-    query_text = st.text_input("検索キーワード(日本語 or 英語)", value="", on_change=clear_session, disabled=len(st.session_state.token) == 0)
+    query_tags = st.multiselect("[オプション] タグの選択(複数選択可)", options=tag_vector.keys(), on_change=clear_session)
 
-    """
-    if len(st.session_state.token) > 0:
-        query_text = st.text_input("検索キーワード(日本語 or 英語)", value="", on_change=clear_session, disabled=len(st.session_state.token) == 0)
-    else:
-        query_text = ""
-    """
-    
+
     target_options = ['タイトルから検索', 'タイトルとアブストラクトから検索', 'アブストラクトから検索']
     target = st.radio("検索条件", target_options, on_change=clear_session)
     ratio = target_options.index(target) / 2.0
@@ -150,8 +163,17 @@ def main():
     if st.button('検索'):
         st.session_state.search_clicked = True
 
+    has_get_params = False
+    get_query_params = st.experimental_get_query_params()
+    if len(get_query_params.get("q", "")) > 0 and st.session_state.search_clicked == False:
+        query_text = get_query_params["q"][0]
+        print("query_text", query_text)
+        query_tags = []
+        has_get_params = True
+
     #if st.button('Search') and len(query_tags) > 0:
-    if st.session_state.search_clicked and (len(query_tags) > 0 or len(query_text) > 0):
+    if (st.session_state.search_clicked and (len(query_tags) > 0 or len(query_text) > 0)) or has_get_params:
+        st.markdown("## **検索結果**")
 
         if len(query_tags):
             tag_query_vector = create_query_vec(query_tags, tag_vector)
@@ -174,13 +196,23 @@ def main():
 
         for i, (_, row) in enumerate(results.iterrows()):
 
-            st.markdown(f"### **[{row['title']}]({DOMAIN + row['pdf_link']})**")
-            st.markdown(f"{row['authors']}")
-            st.caption(row["abst"])
+            title = row['title']
+            pdf_link = row['pdf_link']
+            authors = row['authors']
+            abst = row["abst"]
+            st.markdown(f"### **[{title}]({DOMAIN + pdf_link})**")
+            st.markdown(f"{authors}")
+            st.caption(abst)
 
-            if st.button("この研究の何がすごいのかChatGPTに聞く", key=f"summary_{i}", disabled=st.session_state.token == ""):
+            link = f"[この研究と似た論文を探す](/?q={urllib.parse.quote(title)})"
+            st.markdown(link, unsafe_allow_html=True)
+
+            if st.button(
+                "この研究の何がすごいのかChatGPTに聞く",
+                key=f"summary_{i}",
+                disabled=st.session_state.token == ""):
                 st.session_state.summary_clicked[i] = True
-            
+
             if st.session_state.summary_clicked[i]:
                 if len(st.session_state.summary[i]) == 0:
                     placeholder = st.empty()
