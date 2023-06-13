@@ -107,7 +107,7 @@ def create_summary(placeholder, title, abst):
 
 def main():
 
- 
+    st.set_page_config(page_title="LLMによるCVPR論文検索システム")
     image = Image.open('top.png')
 
     st.image(image, caption='CVPR, June 18-23, 2023, Vancouver, Canada, [image-ref: wikipedia.org]', use_column_width=True)
