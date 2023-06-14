@@ -162,7 +162,7 @@ def create_summary(placeholder, title, abst):
         <li><b>結果、何が達成できたのか</b></li>
         <li style="list-style:none;">{a3}</li>
     </ol>"""
-    render_text = f"""<div style="background-color: #eeeeee; padding: 20px;">{gen_text}</div>"""
+    render_text = f"""<div style="border: 1px rgb(128, 132, 149) solid; padding: 20px;">{gen_text}</div>"""
     placeholder.markdown(render_text, unsafe_allow_html=True)
     return gen_text
 
