@@ -6,6 +6,11 @@ import openai
 from retrying import retry
 from PIL import Image
 import urllib
+import threading
+import time
+import requests
+import json
+
 
 
 # Retry parameters
@@ -15,16 +20,12 @@ retry_kwargs = {
     'wait_exponential_max': 10000,  # Maximum wait time between retries in milliseconds
 }
 
-
 DOMAIN = "https://openaccess.thecvf.com/"
-
 
 @retry(**retry_kwargs)
 def vectorize(text: str, model="text-embedding-ada-002"):
     text = text.replace("\n", " ")
     return openai.Embedding.create(input = [text], model=model)['data'][0]['embedding']
-
-
 
 def load_tag_vector():
     with open('resources/tag_vector.pickle', 'rb') as f:
@@ -68,6 +69,27 @@ def search_rows(tag_query_vector, text_query_vector, k, alpha):
     return meta_df.iloc[top_k_indices]
 
 
+
+def chat_completion_request(messages, functions=None, result=[], model="gpt-3.5-turbo-0613"):
+    headers = {
+        "Content-Type": "application/json",
+        "Authorization": "Bearer " + openai.api_key,
+    }
+    json_data = {"model": model, "messages": messages}
+    if functions is not None:
+        json_data.update({"functions": functions})
+    try:
+        response = requests.post(
+            "https://api.openai.com/v1/chat/completions",
+            headers=headers,
+            json=json_data,
+        )
+        result.append(response)
+    except Exception as e:
+        print("Unable to generate ChatCompletion response")
+        print(f"Exception: {e}")
+
+
 def create_summary(placeholder, title, abst):
     prompt = """
     以下の論文について何がすごいのか、次の項目を出力してください。
@@ -81,27 +103,68 @@ def create_summary(placeholder, title, abst):
     アブストラクト: {abst}
     """.format(title=title, abst=abst)
 
-    response = openai.ChatCompletion.create(
-        model="gpt-3.5-turbo",
-        #model="gpt-4",
-        messages=[
-            {"role": "user", "content": prompt}
-        ],
-        stream=True
-    )
+    functions = [
+        {
+            "name": "format_output",
+            "description": "アブストラクトのサマリー",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "problem_of_existing_research": {
+                        "type": "string",
+                        "description": "既存研究では何ができなかったのか",
+                    },
+                    "how_to_solve": {
+                        "type": "string",
+                        "description": "どのようなアプローチでそれを解決しようとしたか",
+                    },
+                    "what_they_achieved": {
+                        "type": "string",
+                        "description": "結果、何が達成できたのか",
+                    },
+                },
+                "required": ["problem_of_existing_research", "how_to_solve", "what_they_achieved"],
+            },
+        }
+    ]
+
+    placeholder.markdown("ChatGPTが考え中です...😕", unsafe_allow_html=True)
+    #res = chat_completion_request(messages=[{"role": "user", "content": prompt}], functions=functions)
+    m = [{"role": "user", "content": prompt}]
+    result = []
+    thread = threading.Thread(target=chat_completion_request, args=(m, functions, result))
+    thread.start()
+    i = 0
+    faces = ["😕", "😆", "😴", "😊", "😱", "😎", "😏"]
+    while thread.is_alive():
+        i += 1
+        face = faces[i % len(faces)]
+        placeholder.markdown(f"ChatGPTが考え中です...{face}", unsafe_allow_html=True)
+        time.sleep(0.5)
+    thread.join()
+
+    if len(result) == 0:
+        placeholder.markdown("ChatGPTの結果取得に失敗しました...😢", unsafe_allow_html=True)
+        return
     
-    gen_text = "以下の項目についてChatGPTが回答します。<ol><li>既存研究では何ができなかったのか。</li><li>どのようなアプローチでそれを解決しようとしたか。</li><li>結果、何が達成できたのか。</li></ol><br/>"
-    for chunk in response:
-        content = chunk["choices"][0]["delta"].get("content")
-        if content is not None:
-            gen_text += content
-            render_text = f"""<div style="background-color: #eeeeee; padding: 20px;">{gen_text}</div>"""
-            placeholder.markdown(render_text, unsafe_allow_html=True)
+    res = result[0]
+    func_result = res.json()["choices"][0]["message"]["function_call"]["arguments"]
+    output = json.loads(func_result)
+    a1 = output["problem_of_existing_research"]
+    a2 = output["how_to_solve"]
+    a3 = output["what_they_achieved"]
+    gen_text = f"""以下の項目についてChatGPTが回答します。
+    <ol>
+        <li><b>既存研究では何ができなかったのか</b></li>
+        <li style="list-style:none;">{a1}</li>
+        <li><b>どのようなアプローチでそれを解決しようとしたか</b></li>
+        <li style="list-style:none;">{a2}</li>
+        <li><b>結果、何が達成できたのか</b></li>
+        <li style="list-style:none;">{a3}</li>
+    </ol>"""
+    render_text = f"""<div style="background-color: #eeeeee; padding: 20px;">{gen_text}</div>"""
+    placeholder.markdown(render_text, unsafe_allow_html=True)
     return gen_text
-
-
-
-
 
 
 
