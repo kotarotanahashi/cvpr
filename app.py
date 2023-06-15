@@ -92,7 +92,7 @@ def chat_completion_request(messages, functions=None, result=[], model="gpt-3.5-
 
 def create_summary(placeholder, title, abst):
     prompt = """
-    以下の論文について何がすごいのか、次の項目を出力してください。
+    以下の論文について何がすごいのか、次の項目を日本語で出力してください。
 
     (1)既存研究では何ができなかったのか。
     (2)どのようなアプローチでそれを解決しようとしたか
@@ -101,6 +101,7 @@ def create_summary(placeholder, title, abst):
 
     タイトル: {title}
     アブストラクト: {abst}
+    日本語で出力してください。
     """.format(title=title, abst=abst)
 
     functions = [
